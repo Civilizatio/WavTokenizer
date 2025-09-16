@@ -9,12 +9,16 @@ from decoder.pretrained import WavTokenizer
 import time
 
 import logging
+from dotenv import load_dotenv
+load_dotenv()
+
+import pathlib
 
 device1=torch.device('cuda:0')
 # device2=torch.device('cpu')
 
-input_path = "./WavTokenizer/data/infer/lirbitts_testclean"
-out_folder = './WavTokenizer/result/infer'
+input_path = "./data/test/test-clean.txt"
+out_folder = './result/infer'
 # os.system("rm -r %s"%(out_folder))
 # os.system("mkdir -p %s"%(out_folder))
 # ll="libritts_testclean500_large"
@@ -22,12 +26,15 @@ ll="wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn_testcle
 
 tmptmp=out_folder+"/"+ll
 
-os.system("rm -r %s"%(tmptmp))
-os.system("mkdir -p %s"%(tmptmp))
+if os.path.exists(tmptmp):
+    os.system("rm -r %s"%(tmptmp))    
+os.makedirs(tmptmp)
+
 
 # 自己数据模型加载
-config_path = "./WavTokenizer/configs/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn.yaml"
-model_path = "./WavTokenizer/result/train/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn/lightning_logs/version_3/checkpoints/wavtokenizer_checkpoint_epoch=24_step=137150_val_loss=5.6731.ckpt"
+config_path = "./configs/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn.yaml"
+# model_path = "./WavTokenizer/result/train/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn/lightning_logs/version_3/checkpoints/wavtokenizer_checkpoint_epoch=24_step=137150_val_loss=5.6731.ckpt"
+model_path = pathlib.Path(os.getenv("MODEL_PATH_40"))
 wavtokenizer = WavTokenizer.from_pretrained0802(config_path, model_path)
 wavtokenizer = wavtokenizer.to(device1)
 # wavtokenizer = wavtokenizer.to(device2)
@@ -41,7 +48,8 @@ x = [i.strip() for i in x]
 
 features_all=[]
 
-for i in range(len(x)):
+max_len = 10
+for i in range(max_len):
 
     wav, sr = torchaudio.load(x[i])
     # print("***:",x[i])
@@ -55,7 +63,7 @@ for i in range(len(x)):
 
 # wavtokenizer = wavtokenizer.to(device2)
 
-for i in range(len(x)):
+for i in range(max_len):
 
     bandwidth_id = torch.tensor([0])
 

@@ -78,11 +78,12 @@ torchaudio.save(audio_outpath, audio_out, sample_rate=24000, encoding='PCM_S', b
 
 
 ### Part2: Generating discrete codecs
+
 ```python
 
 from encoder.utils import convert_audio
 import torchaudio
-import torch
+import torch6
 from decoder.pretrained import WavTokenizer
 
 device=torch.device('cpu')
@@ -130,6 +131,8 @@ audio_out = wavtokenizer.decode(features, bandwidth_id=bandwidth_id)
 ```python
 # Process the data into a form similar to ./data/demo.txt
 ```
+
+
 
 ### Step2: Modifying configuration files
 ```python
