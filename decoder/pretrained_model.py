@@ -50,7 +50,7 @@ class WavTokenizer(nn.Module):
         self.multiresddisc = multiresddisc
 
     @classmethod
-    def from_hparams0828(cls, config_path: str) -> "Vocos":
+    def from_hparams0828(cls, config_path: str) -> "WavTokenizer":
         """
         Class method to create a new Vocos model instance from hyperparameters stored in a yaml configuration file.
         """
@@ -86,9 +86,9 @@ class WavTokenizer(nn.Module):
         return model
 
     @classmethod
-    def from_hparams0802(cls, config_path: str) -> "Vocos":
+    def from_hparams0802(cls, config_path: str) -> "WavTokenizer":
         """
-        Class method to create a new Vocos model instance from hyperparameters stored in a yaml configuration file.
+        Class method to create a new WavTokenizer model instance from hyperparameters stored in a yaml configuration file.
         """
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)

@@ -3,3 +3,7 @@ data/
 .env
 decoder/__pycache__/
 result/
+
+metrics/__pycache__
+metrics/epoch=3-step=7459.ckpt
+metrics/wav2vec_small.pt

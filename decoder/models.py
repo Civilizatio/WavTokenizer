@@ -63,7 +63,7 @@ class ResnetBlock(nn.Module):
 
         if temb is not None:
             h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
-
+ 
         h = self.norm2(h)
         h = nonlinearity(h)
         h = self.dropout(h)
@@ -98,11 +98,11 @@ class AttnBlock(nn.Module):
         )
 
     def forward(self, x):
-        h_ = x
+        h_ = x  # shape: [B, C, L]
         h_ = self.norm(h_)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
+        q = self.q(h_)  # shape: [B, C, L]
+        k = self.k(h_)  # shape: [B, C, L]
+        v = self.v(h_)  # shape: [B, C, L]
 
         # compute attention
         b, c, h = q.shape
@@ -115,7 +115,7 @@ class AttnBlock(nn.Module):
         w_ = w_.permute(0, 2, 1)  # b,hw,hw (first hw of k, second of q)
         h_ = torch.bmm(v, w_)  # b, c,hw (hw of q) h_[b,c,j] = sum_i v[b,c,i] w_[b,i,j]
 
-        h_ = self.proj_out(h_)
+        h_ = self.proj_out(h_)  # shape: [B, C, L]
 
         return x + h_
 
@@ -233,17 +233,17 @@ class VocosBackbone(Backbone):
     def forward(
         self, x: torch.Tensor, bandwidth_id: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        x = self.embed(x)
-        x = self.pos_net(x)
+        x = self.embed(x) # shape: (B, dim, L)
+        x = self.pos_net(x) # shape: (B, dim, L)
         if self.adanorm:
             assert bandwidth_id is not None
-            x = self.norm(x.transpose(1, 2), cond_embedding_id=bandwidth_id)
+            x = self.norm(x.transpose(1, 2), cond_embedding_id=bandwidth_id) # shape: (B, L, dim)
         else:
             x = self.norm(x.transpose(1, 2))
-        x = x.transpose(1, 2)
+        x = x.transpose(1, 2) # shape: (B, dim, L)
         for conv_block in self.convnext:
-            x = conv_block(x, cond_embedding_id=bandwidth_id)
-        x = self.final_layer_norm(x.transpose(1, 2))
+            x = conv_block(x, cond_embedding_id=bandwidth_id) # shape: (B, dim, L)
+        x = self.final_layer_norm(x.transpose(1, 2)) # shape: (B, L, dim)
         return x
 
 

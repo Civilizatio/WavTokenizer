@@ -149,6 +149,10 @@ cd ./WavTokenizer
 python train.py fit --config ./configs/xxx.yaml
 ```
 
+```bash 
+python train.py fit --config ./configs/test.yaml
+```
+
 
 ## Citation
 

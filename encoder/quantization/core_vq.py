@@ -51,6 +51,16 @@ def ema_inplace(moving_avg, new, decay: float):
 
 
 def laplace_smoothing(x, n_categories: int, epsilon: float = 1e-5):
+    """ Laplace smoothing to avoid zero probabilities.
+    P(x_i) = (count(x_i) + ε) / (total_count + k*ε)
+    where k is the number of categories.
+    Args:
+        x (torch.Tensor): Counts for each category. Shape: [n_categories]
+        n_categories (int): Number of categories.
+        epsilon (float): Smoothing factor.
+    Returns:
+        torch.Tensor: Smoothed probabilities. Shape: [n_categories]
+    """
     return (x + epsilon) / (x.sum() + n_categories * epsilon)
 
 
@@ -93,7 +103,7 @@ def kmeans(samples, num_clusters: int, num_iters: int = 10):
 
         means = torch.where(zero_mask[..., None], means, new_means)
 
-    return means, bins
+    return means, bins # means: shape [codebook_size, dim]  bins:shape [codebook_size]
 
 
 class EuclideanCodebook(nn.Module):
@@ -124,7 +134,7 @@ class EuclideanCodebook(nn.Module):
         super().__init__()
         self.decay = decay
         init_fn: tp.Union[tp.Callable[..., torch.Tensor], tp.Any] = uniform_init if not kmeans_init else torch.zeros
-        embed = init_fn(codebook_size, dim)
+        embed = init_fn(codebook_size, dim) # shape [codebook_size, dim]
 
         self.codebook_size = codebook_size
 
@@ -142,7 +152,7 @@ class EuclideanCodebook(nn.Module):
         if self.inited:
             return
 
-        embed, cluster_size = kmeans(data, self.codebook_size, self.kmeans_iters) #data不变
+        embed, cluster_size = kmeans(data, self.codebook_size, self.kmeans_iters) # data不变
         self.embed.data.copy_(embed)
         self.embed_avg.data.copy_(embed.clone())
         self.cluster_size.data.copy_(cluster_size)
@@ -151,12 +161,15 @@ class EuclideanCodebook(nn.Module):
         distrib.broadcast_tensors(self.buffers())
 
     def replace_(self, samples, mask):
+        """Replace the codebook entries where mask is true with randomly selected samples from the batch."""
         modified_codebook = torch.where(
             mask[..., None], sample_vectors(samples, self.codebook_size), self.embed
         )
         self.embed.data.copy_(modified_codebook)
 
     def expire_codes_(self, batch_samples):
+        """ Expire the codes that have a cluster size smaller than the threshold."""
+        
         if self.threshold_ema_dead_code == 0:
             return
 
@@ -169,21 +182,22 @@ class EuclideanCodebook(nn.Module):
         distrib.broadcast_tensors(self.buffers())
 
     def preprocess(self, x):
-        x = rearrange(x, "... d -> (...) d")
+        x = rearrange(x, "... d -> (...) d") # from [b, n, d] to [b*n, d]
         return x
 
     def quantize(self, x):
-        embed = self.embed.t()
+        embed = self.embed.t() # shape [dim, codebook_size]
+        # x.shape [b*n, dim]
         dist = -(
-            x.pow(2).sum(1, keepdim=True)
-            - 2 * x @ embed
-            + embed.pow(2).sum(0, keepdim=True)
-        )
-        embed_ind = dist.max(dim=-1).indices
+            x.pow(2).sum(1, keepdim=True) # shape [b*n, 1]
+            - 2 * x @ embed # shape [b*n, codebook_size]
+            + embed.pow(2).sum(0, keepdim=True) # shape [1, codebook_size]
+        ) # shape [b*n, codebook_size]
+        embed_ind = dist.max(dim=-1).indices # shape [b*n]
         return embed_ind
 
     def postprocess_emb(self, embed_ind, shape):
-        return embed_ind.view(*shape[:-1])
+        return embed_ind.view(*shape[:-1]) # from [b*n] to [b, n]
 
     def dequantize(self, embed_ind):
         quantize = F.embedding(embed_ind, self.embed)
@@ -334,13 +348,13 @@ class ResidualVectorQuantization(nn.Module):
 
         n_q = n_q or len(self.layers)
         for layer in self.layers[:n_q]:
-            quantized, indices, loss = layer(residual)
-            residual = residual - quantized.detach()
+            quantized, indices, loss = layer(residual) # shape [b, d, n], [b, n], []
+            residual = residual - quantized.detach() 
             quantized_out = quantized_out + quantized
             all_indices.append(indices)
             all_losses.append(loss)
 
-        out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
+        out_losses, out_indices = map(torch.stack, (all_losses, all_indices)) # shape: [n_q,] [n_q, b, n]
         return quantized_out, out_indices, out_losses
 
     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:

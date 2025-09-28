@@ -63,7 +63,7 @@ class VocosDataset(Dataset):
         # print(audio_path,"111")
         y1, sr = soundfile.read(audio_path)
         # y1, sr = librosa.load(audio_path,sr=None)
-        y = torch.tensor(y1).float().unsqueeze(0)
+        y = torch.tensor(y1).float().unsqueeze(0) # shape: [1, L]
         # if y.size(0) > 1:
         #     # mix to mono
         #     y = y.mean(dim=0, keepdim=True)
@@ -78,11 +78,11 @@ class VocosDataset(Dataset):
         if sr != self.sampling_rate:
             y = torchaudio.functional.resample(
                 y, orig_freq=sr, new_freq=self.sampling_rate
-            )
+            ) # shape: [1, L']
         if y.size(-1) < self.num_samples:
             pad_length = self.num_samples - y.size(-1)
             padding_tensor = y.repeat(1, 1 + pad_length // y.size(-1))
-            y = torch.cat((y, padding_tensor[:, :pad_length]), dim=1)
+            y = torch.cat((y, padding_tensor[:, :pad_length]), dim=1) # shape: [1, L'+pad_length]
         elif self.train:
             start = np.random.randint(low=0, high=y.size(-1) - self.num_samples + 1)
             y = y[:, start : start + self.num_samples]
