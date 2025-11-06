@@ -153,6 +153,14 @@ python train.py fit --config ./configs/xxx.yaml
 python train.py fit --config ./configs/test.yaml
 ```
 
+### Step4: Monitor the training process
+You can monitor the training process using TensorBoard. Start TensorBoard with the following command:
+
+```bash
+tensorboard --logdir result/train/test/lightning_logs --port 6006
+```
+
+Then open your web browser and go to `http://localhost:6006` to view the training metrics.
 
 ## Citation
 
