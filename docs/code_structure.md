@@ -36,6 +36,26 @@
 
 > 一个很幽默的设计，为了满足 WavTokenizer 的单码本要求，这里的做法是重写一个 `LanguageVectorQuantization`，虽然创建了多个 `VectorQuantization`，但是每个码本量化的并不是前一个的残差，而是开始输入。这导致其实只用了一个码本。而 `encode` 和 `decode` 的接口没有做相应修改，一旦调用就会报错。最后创建的 `ResidualVectorQuantizer` 实例化了 `LanguageVectorQuantization`，直接使用 `forward` 可能也会报错，而 `infer` 则不会报错。
 
+##### `bandwidth`
+
+代码中存在的问题：论文中使用的是单码本，代码中既设置了 `num_quantizers=1`，又设置了 `bandwidths=[6.6, 6.6, 6.6, 6.6]`，在前向的时候，还会设置 `bandwidth_id` 来进行推断。这显然很令人迷惑。经过阅读源码，发现其还修改了 `ResidualVectorQuantizer` 以及底层的 `ResidualVectorQuantization`。
+
+问题根源：本文的代码的主要结构来自于 `Vocos`，而 `Vocos` 是一个声码器，接受 mel-spectrogram 或者 encodec 编码得到的特征，生成 waveform。因此，`Vocos` 代码中直接使用 `Encodec` 预训练好的模型，调用其 `encoder` 和 `quantizer` 得到特征，训练的是后面的部分。本文要做的是 `codec`，因此不仅需要将 `encoder` 和 `quantizer` 两部分的参数设置为可学习的，还需要修改结构。作者的修改就很别扭，把底层的 `RVQ` 实现也进行了修改。
+
+处理办法：底层的 `ResidualVectorQuantization` 保持不变，调用其的 `ResidualVectorQuantizer` 进行修改，使之对输入的两个参数进行判断 `num_quantizers` 和 `bandwidths`。既可以支持单码本，也可以支持多码本。根据两种模式，可选地输入 `bandwidth_id`。
+
+这里也对 `frame_rate` 进行了自适应化计算，公式如下：
+$$
+\text{frame\_rate} = \frac{N_q\times B_{\text{per\_cb}}\times\text{sample\_rate}}{\text{downsamping\_factor}\times 1000} \quad (\text{kbps})
+$$
+
+其中，$N_q$ 为码本数量，$B_{\text{per\_cb}}$ 为每个码本的比特数（码本大小为 $2^{B_{\text{per\_cb}}}$），$\text{sample\_rate}$ 为采样率，$\text{downsamping\_factor}$ 为编码器的下采样倍数。
+
+具体修改后的代码，可见 [`encoder/quantization/vq.py`](./encoder/quantization/vq.py)，以及 [`decoder/feature_extractors.py`](./decoder/feature_extractors.py)。
+
+
+
+
 ### `Discriminator` 
 
 主要包含三种鉴别器：

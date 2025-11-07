@@ -43,7 +43,7 @@ model:
         bandwidths: [6.6, 6.6, 6.6, 6.6]
         train_codebooks: true
         num_quantizers: 1  
-        dowmsamples: [6, 5, 5, 4]
+        downsamples: [6, 5, 5, 4]
         vq_bins: 4096
         vq_kmeans: 200
 

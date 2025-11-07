@@ -1,5 +1,7 @@
-from typing import List
+from random import sample
+from typing import List, Optional
 
+from pyparsing import Opt
 import torch
 import torchaudio
 from torch import nn
@@ -7,7 +9,7 @@ import math
 from decoder.modules import safe_log
 from encoder.modules import SEANetEncoder, SEANetDecoder
 from encoder import EncodecModel
-from encoder.quantization import ResidualVectorQuantizer
+from encoder.quantization import ResidualVectorQuantizer, vq
 
 
 class FeatureExtractor(nn.Module):
@@ -62,19 +64,41 @@ class EncodecFeatures(FeatureExtractor):
     def __init__(
         self,
         encodec_model: str = "encodec_24khz",
-        bandwidths: List[float] = [1.5, 3.0, 6.0, 12.0],
+        bandwidths: Optional[List[float]] = None,
         train_codebooks: bool = False,
-        num_quantizers: int = 1,
-        dowmsamples: List[int] = [6, 5, 5, 4],
+        num_quantizers: Optional[int] = None,
+        downsamples: List[int] = [6, 5, 5, 4],
         vq_bins: int = 16384,
         vq_kmeans: int = 800,
+        sample_rate: int = 24000,
     ):
         super().__init__()
 
         # breakpoint()
-        self.frame_rate = 25  # not use
-        # n_q = int(bandwidths[-1]*1000/(math.log2(2048) * self.frame_rate))
-        n_q = num_quantizers  # important
+        if num_quantizers is None and bandwidths is None:
+            raise ValueError(
+                "Either 'num_quantizers' or 'bandwidths' must be provided."
+            )
+        if num_quantizers is not None and num_quantizers != 1:
+            raise ValueError(
+                "When 'num_quantizers' is provided, it must be set to 1 for single codebook usage."
+            )
+
+        self.sample_rate = sample_rate
+        total_downsample = 1
+        for r in downsamples:
+            total_downsample *= r
+        self.frame_rate = sample_rate / total_downsample
+
+        self.n_q = (
+            num_quantizers
+            if num_quantizers is not None
+            else int(bandwidths[-1] * 1000 / (math.log2(vq_bins) * self.frame_rate))
+        )
+        self.bandwidths = bandwidths # None or List[float]
+        self.use_single_codebook = num_quantizers is not None and num_quantizers == 1
+        
+        # Define encoder, decoder, and quantizer
         encoder = SEANetEncoder(
             causal=False,
             n_residual_layers=1,
@@ -84,7 +108,7 @@ class EncodecFeatures(FeatureExtractor):
             dimension=512,
             channels=1,
             n_filters=32,
-            ratios=dowmsamples,
+            ratios=downsamples,
             activation="ELU",
             kernel_size=7,
             residual_kernel_size=3,
@@ -113,7 +137,7 @@ class EncodecFeatures(FeatureExtractor):
         )
         quantizer = ResidualVectorQuantizer(
             dimension=512,
-            n_q=n_q,
+            n_q=self.n_q,
             bins=vq_bins,
             kmeans_iters=vq_kmeans,
             decay=0.99,
@@ -127,7 +151,7 @@ class EncodecFeatures(FeatureExtractor):
                 decoder=decoder,
                 quantizer=quantizer,
                 target_bandwidths=bandwidths,
-                sample_rate=24000,
+                sample_rate=self.sample_rate,
                 channels=1,
             )
         else:
@@ -136,19 +160,9 @@ class EncodecFeatures(FeatureExtractor):
             )
         for param in self.encodec.parameters():
             param.requires_grad = True
-        # self.num_q = n_q
-        # codebook_weights = torch.cat([vq.codebook for vq in self.encodec.quantizer.vq.layers[: self.num_q]], dim=0)
-        # self.codebook_weights = torch.nn.Parameter(codebook_weights, requires_grad=train_codebooks)
-        self.bandwidths = bandwidths
+        
 
-    # @torch.no_grad()
-    # def get_encodec_codes(self, audio):
-    #     audio = audio.unsqueeze(1)
-    #     emb = self.encodec.encoder(audio)
-    #     codes = self.encodec.quantizer.encode(emb, self.encodec.frame_rate, self.encodec.bandwidth)
-    #     return codes
-
-    def forward(self, audio: torch.Tensor, bandwidth_id: torch.Tensor):
+    def forward(self, audio: torch.Tensor, bandwidth_id: Optional[torch.Tensor]):
         if self.training:
             self.encodec.train()
 
@@ -157,34 +171,39 @@ class EncodecFeatures(FeatureExtractor):
         # breakpoint()
 
         emb = self.encodec.encoder(audio)
-        q_res = self.encodec.quantizer(
-            emb, self.frame_rate, bandwidth=self.bandwidths[bandwidth_id]
-        )
+        if self.use_single_codebook:
+            q_res = self.encodec.quantizer(emb, self.frame_rate)
+        else:
+            if bandwidth_id is None:
+                raise ValueError(
+                    "bandwidth_id must be provided when using multiple codebooks."
+                )
+            q_res = self.encodec.quantizer(
+                emb, self.frame_rate, bandwidth=self.bandwidths[bandwidth_id]
+            )
         quantized = q_res.quantized
         codes = q_res.codes
         commit_loss = q_res.penalty  # codes(8,16,75),features(16,128,75)
 
         return quantized, codes, commit_loss
 
-        # codes = self.get_encodec_codes(audio)
-        # # Instead of summing in the loop, it stores subsequent VQ dictionaries in a single `self.codebook_weights`
-        # # with offsets given by the number of bins, and finally summed in a vectorized operation.
-        # offsets = torch.arange(
-        #     0, self.encodec.quantizer.bins * len(codes), self.encodec.quantizer.bins, device=audio.device
-        # )
-        # embeddings_idxs = codes + offsets.view(-1, 1, 1)
-        # features = torch.nn.functional.embedding(embeddings_idxs, self.codebook_weights).sum(dim=0)
-        # return features.transpose(1, 2)
 
-    def infer(self, audio: torch.Tensor, bandwidth_id: torch.Tensor):
+    def infer(self, audio: torch.Tensor, bandwidth_id: Optional[torch.Tensor]):
         if self.training:
             self.encodec.train()
 
         audio = audio.unsqueeze(1)  # audio(16,24000)
         emb = self.encodec.encoder(audio)
-        q_res = self.encodec.quantizer.infer(
-            emb, self.frame_rate, bandwidth=self.bandwidths[bandwidth_id]
-        )
+        if self.use_single_codebook:
+            q_res = self.encodec.quantizer.infer(emb, self.frame_rate)
+        else:
+            if bandwidth_id is None:
+                raise ValueError(
+                    "bandwidth_id must be provided when using multiple codebooks."
+                )
+            q_res = self.encodec.quantizer.infer(
+                emb, self.frame_rate, bandwidth=self.bandwidths[bandwidth_id]
+            )
         quantized = q_res.quantized
         codes = q_res.codes
         commit_loss = q_res.penalty  # codes(8,16,75),features(16,128,75)
