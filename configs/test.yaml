@@ -32,9 +32,12 @@ model:
     evaluate_pesq: true
     evaluate_periodicty: true
 
-    resume: false
-    resume_config: ./WavTokenizer/configs/wavtokenizer_smalldata_frame40_3s_nq1_code16384_dim512_kmeans800_attn.yaml
-    resume_model: ./version_3/checkpoints/xxx.ckpt
+    # resume: false
+    # resume_config: ./WavTokenizer/configs/wavtokenizer_smalldata_frame40_3s_nq1_code16384_dim512_kmeans800_attn.yaml
+    # resume_model: ./version_3/checkpoints/xxx.ckpt
+    resume: true
+    resume_config: ./configs/test.yaml
+    resume_model: ./result/train/test/lightning_logs/version_0/checkpoints/last.ckpt
 
     feature_extractor:
       class_path: decoder.feature_extractors.EncodecFeatures

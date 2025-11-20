@@ -3,6 +3,7 @@ data/
 .env
 decoder/__pycache__/
 result/
+result
 
 metrics/__pycache__
 metrics/epoch=3-step=7459.ckpt

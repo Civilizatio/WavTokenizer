@@ -221,7 +221,7 @@ def plot_perceptual_comparison(
 
     # 频谱包络对比
     axes[2, 0].semilogy(
-        freqs_orig, np.mean(Sxx_orig, axis=1), "b-", labe0l="Original", alpha=0.7
+        freqs_orig, np.mean(Sxx_orig, axis=1), "b-", label="Original", alpha=0.7
     )
     axes[2, 0].semilogy(
         freqs_recon, np.mean(Sxx_recon, axis=1), "r-", label="Reconstructed", alpha=0.7
